@@ -4,7 +4,7 @@ The Database Gnome is a simple database agent that performs SQL queries based on
 
 ## TODO
 
-- [] set up SQLite database for testing
+- [X] set up SQLite database for testing
     - modernc driver
 - [] create web view generator
 - [] connect to Groq API
