@@ -4,13 +4,74 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ .Title }}</title>
+  <script src="https://unpkg.com/htmx.org/dist/htmx.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/static/styles.css">
+  <title>{{ .Title }}</title>
 </head>
 <body>
     <h1>Hello World!!!!</h1>
-    {{ range .Products }}
-    <ul>{{ . }}</ul>
-    {{ end }}
+    <button hx-get="/filter" hx-swap="innerHTML" hx-target="#productListContainer">Get Items</button>
+    <div id="productListContainer">
+      {{ template "productList" .Products }}
+    </div>
 </body>
 </html>
+{{ end }}
+
+{{ block "productList" . }}
+<ul class="product-list">
+  {{ range . }}
+    {{ template "product" . }}
+  {{ end }}
+</ul>
+{{ end }}
+
+{{ block "product" . }}
+<li class='listing-container'>
+  <div class="listing-name">
+    {{ .Name }}
+  </div>
+  <div class="listing-field">
+    {{ if .ModelYear.Valid }}
+      Year: {{ .ModelYear.Value }}
+    {{ else }}
+      N/A
+    {{ end }}
+  </div>
+  <div class="listing-field">
+    {{ if .Mpg.Valid }}
+      Mpg: {{ .Mpg.Value }}
+    {{ else }}
+      N/A
+    {{ end }}
+  </div>
+  <div class="listing-field">
+    {{ if .Weight.Valid }}
+      Weight: {{ .Weight.Value }}
+    {{ else }}
+      N/A
+    {{ end }}
+  </div>
+  <div class="listing-field">
+    {{ if .Cylinders.Valid }}
+      Cylinders: {{ .Cylinders.Value }}
+    {{ else }}
+      N/A
+    {{ end }}
+  </div>
+  <div class="listing-field">
+    {{ if .Horsepower.Valid }}
+      Horsepower: {{ .Horsepower.Value }}
+    {{ else }}
+      N/A
+    {{ end }}
+  </div>
+  <div class="listing-field">
+    {{ if .Acceleration.Valid }}
+      Acceleration: {{ .Acceleration.Value }}
+    {{ else }}
+      N/A
+    {{ end }}
+  </div>
+</li>
 {{ end }}

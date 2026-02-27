@@ -1,0 +1,24 @@
+.product-list {
+  width: 600px;
+}
+
+.listing-container {
+  list-style-type: none;
+  display: grid;
+  grid-template-columns: auto auto auto;
+  border: 1px solid black;
+  margin-top: 1em;
+}
+
+.listing-field {
+  border: 1px solid gray;
+  justify-self: ;
+}
+
+.listing-name {
+  grid-column-start: 1;
+  grid-column-end: 4;
+  justify-self: begin;
+  width: 100%;
+  height: 100%;
+}
