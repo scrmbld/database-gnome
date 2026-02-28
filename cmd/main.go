@@ -10,16 +10,24 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/scrmbld/database-gnome/cmd/glue"
 	"github.com/scrmbld/database-gnome/cmd/logging"
+
+	"github.com/joho/godotenv"
 	_ "modernc.org/sqlite"
 )
 
 const PORT string = "4400"
 const ADDR string = "0.0.0.0"
+
+const model string = "openai/gpt-oss-20b"
+
+const sqlTemplate string = "SELECT Name.name, Observation.mpg, Observation.cylinders, Observation.horsepower, Observation.weight, Observation.model_year, Observation.acceleration FROM Observation INNER JOIN Name ON Name.name_id=Observation.name_id INNER JOIN Origin on Origin.origin_id=Observation.origin_id WHERE"
+
+const systemPrompt string = "You are a part of a database agent system that enables users to filter products on an ecommerce website using natural language queries. Your task is to help generate sql queries based on the user input. Remember that, since you only help users filter, sort, and search product listings, you have no ability to perform any write operations to the database -- that includes DELETE, UPDATE, and INSERT operations. Also, you cannot influence the information shown on product listings, only which listings are shown and what order they are in. Here is the databse schema:\\n```sql\\nCREATE TABLE IF NOT EXISTS \\\"Observation\\\" (\\n\\tmpg FLOAT,\\n\\tcylinders BIGINT,\\n\\tdisplacement FLOAT,\\n\\thorsepower FLOAT,\\n\\tweight BIGINT,\\n\\tacceleration FLOAT,\\n\\tmodel_year BIGINT,\\n\\torigin_id BIGINT,\\n\\tname_id BIGINT\\n);\\nCREATE TABLE IF NOT EXISTS \\\"Origin\\\" (\\n\\torigin_id BIGINT,\\n\\torigin TEXT\\n);\\nCREATE TABLE IF NOT EXISTS \\\"Name\\\" (\\n\\tname_id BIGINT,\\n\\tname TEXT\\n);\\n```\\nThe system will run your SQL code to get a list of name_id values that match your filters. This list is then used to generate the web view. Your output must ONLY include SQL code in plain text format (no markdown). Anything else WILL break the system.\\n\\nWhen you receive a user request, complete the following SQL so that it returns the name_id of all products that match the said user request.\\n```sql\\n" + sqlTemplate + "```\\nDo not repeat the already provided SQL code in your response, only include the parts that you have come up with."
 
 type ProductRecord struct {
 	Name         string
@@ -36,43 +44,11 @@ type PageData struct {
 	Products []ProductRecord
 }
 
-func getIds(db *sql.DB) ([]int, error) {
-	rows, err := db.Query("SELECT name_id from Name")
-	if err != nil {
-		return nil, err
-	}
+func getProductInfo(logger *log.Logger, db *sql.DB, modelFilters string) ([]ProductRecord, error) {
+	query := fmt.Sprintf("%s %s", sqlTemplate, modelFilters)
+	logger.Printf("Database: %s", query)
 
-	defer rows.Close()
-
-	var nameIds []int
-	for rows.Next() {
-		var nameId int
-		err := rows.Scan(&nameId)
-		if err != nil {
-			return nil, err
-		}
-		nameIds = append(nameIds, nameId)
-	}
-
-	return nameIds, nil
-}
-
-func getProductInfo(db *sql.DB, nameIds []int) ([]ProductRecord, error) {
-	// get the data for those items needed by the view
-	placeholders := strings.Repeat("?, ", len(nameIds)-1) + "?"
-	query := fmt.Sprintf(`
-		SELECT Name.name, Observation.mpg, Observation.cylinders, Observation.horsepower, Observation.weight, Observation.model_year, Observation.acceleration
-		FROM Name
-		INNER JOIN Observation ON Name.name_id==Observation.name_id
-		WHERE Name.name_id IN (%s)
-		`, placeholders)
-
-	args := make([]any, len(nameIds))
-	for i, id := range nameIds {
-		args[i] = id
-	}
-
-	rows, err := db.Query(query, args...)
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -119,15 +95,20 @@ func addRoutes(mux *http.ServeMux, logger *log.Logger, db *sql.DB) {
 	})
 
 	mux.HandleFunc("/filter", func(w http.ResponseWriter, r *http.Request) {
-		// if r.Method != http.MethodPost {
-		// 	http.Error(w, "Method not allowed", 405)
-		// 	return
-		// }
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		query := r.FormValue("filter-request")
+		response, err := glue.Request(logger, model, systemPrompt, query)
+		if err != nil {
+			logger.Printf("Model: %s", err)
+			http.Error(w, "AI error", 500)
+		}
 
 		// find all the items that match our filters
-		nameIds, err := getIds(db)
-
-		productsList, err := getProductInfo(db, nameIds)
+		productsList, err := getProductInfo(logger, db, response.Choices[0].Message.Content)
 		if err != nil {
 			logger.Printf("Database: %s", err)
 			http.Error(w, "Database error", 500)
@@ -184,6 +165,7 @@ func run(ctx context.Context, logger *log.Logger, db *sql.DB) error {
 }
 
 func main() {
+	godotenv.Load()
 	logger := log.New(os.Stderr, "HTTP: ", log.Ldate|log.Ltime|log.Lmsgprefix)
 	db, err := sql.Open("sqlite", "./data/app.db")
 	if err != nil {

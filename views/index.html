@@ -10,7 +10,10 @@
 </head>
 <body>
     <h1>Hello World!!!!</h1>
-    <button hx-get="/filter" hx-swap="innerHTML" hx-target="#productListContainer">Get Items</button>
+    <form hx-post="/filter" hx-swap="innerHTML" hx-target="#productListContainer">
+      <input type="text" id="filter-request" name="filter-request">
+      <button>Filter</button>
+    </form>
     <div id="productListContainer">
       {{ template "productList" .Products }}
     </div>
