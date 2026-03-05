@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+type Model interface {
+	Request(systemPrompt string, userPrompt string) (ModelResponse, error)
+}
+
 type ModelResponse struct {
 	Created int `json:"created"`
 	Choices []struct {
@@ -21,7 +25,12 @@ type ModelResponse struct {
 	} `json:"choices"`
 }
 
-func parseResponse(resp []byte) (ModelResponse, error) {
+type GroqModel struct {
+	model  string
+	logger *log.Logger
+}
+
+func (g *GroqModel) parseResponse(resp []byte) (ModelResponse, error) {
 	var result ModelResponse
 	err := json.Unmarshal(resp, &result)
 	if err != nil {
@@ -31,8 +40,8 @@ func parseResponse(resp []byte) (ModelResponse, error) {
 	return result, nil
 }
 
-func Request(logger *log.Logger, model string, systemPrompt string, userPrompt string) (ModelResponse, error) {
-	logger.Printf("Model: Request: %s", userPrompt)
+func (g *GroqModel) Request(systemPrompt string, userPrompt string) (ModelResponse, error) {
+	g.logger.Printf("Model: Request: %s", userPrompt)
 
 	groqToken := os.Getenv("GROQ_API_KEY")
 
@@ -52,7 +61,7 @@ func Request(logger *log.Logger, model string, systemPrompt string, userPrompt s
 	"max_completion_tokens": 512,
 	"reasoning_effort": "low",
 	"top_p": 1
-	}`, systemPrompt, userPrompt, model))
+	}`, systemPrompt, userPrompt, g.model))
 	bodyReader := bytes.NewReader(jsonBody)
 	req, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bodyReader)
 	if err != nil {
@@ -74,7 +83,11 @@ func Request(logger *log.Logger, model string, systemPrompt string, userPrompt s
 		respSb.Write(buf)
 	}
 
-	logger.Printf("Model: %s", respSb.String())
+	g.logger.Printf("Model: %s", respSb.String())
 
-	return parseResponse([]byte(respSb.String()))
+	return g.parseResponse([]byte(respSb.String()))
+}
+
+func NewGroqModel(model string, logger *log.Logger) GroqModel {
+	return GroqModel{model: model, logger: logger}
 }
