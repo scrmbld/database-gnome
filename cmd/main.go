@@ -84,7 +84,7 @@ func addRoutes(mux *http.ServeMux, httpLogger *log.Logger, db *sql.DB) {
 	dbLogger := log.New(os.Stderr, "DB: ", log.Ldate|log.Ltime|log.Lmsgprefix)
 	aiLogger := log.New(os.Stderr, "Model: ", log.Ldate|log.Ltime|log.Lmsgprefix)
 	GroqModel := glue.NewGroqModel(model, aiLogger)
-	dbGnome := gnome.NewGnome(aiLogger, &GroqModel)
+	dbGnome := gnome.NewGnome(&GroqModel)
 	tmpl := template.Must(template.ParseFiles("./views/index.html"))
 
 	fs := http.FileServer(http.Dir("./static"))
@@ -100,7 +100,7 @@ func addRoutes(mux *http.ServeMux, httpLogger *log.Logger, db *sql.DB) {
 		}
 
 		userQuery := r.FormValue("filter-request")
-		response, err := dbGnome.Query(userQuery)
+		response, err := dbGnome.GenerateQuery(userQuery)
 		if err != nil {
 			httpLogger.Printf("dbGnome: %s", err)
 			http.Error(w, "AI error", 500)
