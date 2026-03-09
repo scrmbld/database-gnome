@@ -23,7 +23,7 @@ import (
 const PORT string = "4400"
 const ADDR string = "0.0.0.0"
 
-const model string = "openai/gpt-oss-20b"
+const model string = "SmolLM2.q8.gguf"
 
 type ProductRecord struct {
 	Name         string
@@ -83,8 +83,8 @@ func getProductInfo(logger *log.Logger, db *sql.DB, query string) ([]ProductReco
 func addRoutes(mux *http.ServeMux, httpLogger *log.Logger, db *sql.DB) {
 	dbLogger := log.New(os.Stderr, "DB: ", log.Ldate|log.Ltime|log.Lmsgprefix)
 	aiLogger := log.New(os.Stderr, "Model: ", log.Ldate|log.Ltime|log.Lmsgprefix)
-	GroqModel := glue.NewGroqModel(model, aiLogger)
-	dbGnome := gnome.NewGnome(&GroqModel)
+	llamaServer := glue.NewOAIApiProvider("no-key", "http://127.0.0.1:8080", aiLogger)
+	dbGnome := gnome.NewGnome(llamaServer)
 	tmpl := template.Must(template.ParseFiles("./views/index.html"))
 
 	fs := http.FileServer(http.Dir("./static"))

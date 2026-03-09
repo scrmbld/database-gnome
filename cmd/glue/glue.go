@@ -8,15 +8,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 )
 
-type Model interface {
-	Request(systemPrompt string, userPrompt string) (ModelResponse, error)
+const LlamaUrl string = "https://127.0.0.1:8080"
+const GroqUrl string = "https://api.groq.com/openai"
+
+type Provider interface {
+	Request(model string, systemPrompt string, userPrompt string) (CompletionResponse, error)
+	FimRequest(model string, beforeContext string, afterContext string) (FimResponse, error)
 }
 
-type ModelResponse struct {
+type CompletionResponse struct {
 	Created int `json:"created"`
 	Choices []struct {
 		Message struct {
@@ -25,25 +28,38 @@ type ModelResponse struct {
 	} `json:"choices"`
 }
 
-type GroqModel struct {
-	model  string
-	logger *log.Logger
+type FimResponse struct {
+	Content string `json:content`
 }
 
-func (g *GroqModel) parseResponse(resp []byte) (ModelResponse, error) {
-	var result ModelResponse
+type OAIApiProvider struct {
+	apiToken    string
+	providerUrl string
+	logger      *log.Logger
+}
+
+func parseCompletionResponse(resp []byte) (CompletionResponse, error) {
+	var result CompletionResponse
 	err := json.Unmarshal(resp, &result)
 	if err != nil {
-		return ModelResponse{}, err
+		return CompletionResponse{}, err
 	}
 
 	return result, nil
 }
 
-func (g *GroqModel) Request(systemPrompt string, userPrompt string) (ModelResponse, error) {
-	g.logger.Printf("Model: Request: %s", userPrompt)
+func parseFimResponse(resp []byte) (FimResponse, error) {
+	var result FimResponse
+	err := json.Unmarshal(resp, &result)
+	if err != nil {
+		return FimResponse{}, err
+	}
 
-	groqToken := os.Getenv("GROQ_API_KEY")
+	return result, nil
+}
+
+func (g *OAIApiProvider) Request(model string, systemPrompt string, userPrompt string) (CompletionResponse, error) {
+	g.logger.Printf("Model: Request: %s", userPrompt)
 
 	client := &http.Client{}
 	jsonBody := []byte(fmt.Sprintf(`{"messages": [
@@ -59,21 +75,20 @@ func (g *GroqModel) Request(systemPrompt string, userPrompt string) (ModelRespon
 	"model": "%s",
 	"temperature": 0,
 	"max_completion_tokens": 512,
-	"reasoning_effort": "low",
 	"top_p": 1
-	}`, systemPrompt, userPrompt, g.model))
+	}`, systemPrompt, userPrompt, model))
 	bodyReader := bytes.NewReader(jsonBody)
-	req, err := http.NewRequest("POST", "https://api.groq.com/openai/v1/chat/completions", bodyReader)
+	req, err := http.NewRequest("POST", g.providerUrl+"/v1/chat/completions", bodyReader)
 	if err != nil {
-		return ModelResponse{}, err
+		return CompletionResponse{}, err
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", groqToken))
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", g.apiToken))
 	req.Header.Add("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 
 	if err != nil {
-		return ModelResponse{}, err
+		return CompletionResponse{}, err
 	}
 
 	respScanner := bufio.NewScanner(resp.Body)
@@ -85,9 +100,50 @@ func (g *GroqModel) Request(systemPrompt string, userPrompt string) (ModelRespon
 
 	g.logger.Printf("Model: %s", respSb.String())
 
-	return g.parseResponse([]byte(respSb.String()))
+	return parseCompletionResponse([]byte(respSb.String()))
 }
 
-func NewGroqModel(model string, logger *log.Logger) GroqModel {
-	return GroqModel{model: model, logger: logger}
+func (g *OAIApiProvider) FimRequest(model string, beforeContext string, afterContext string) (FimResponse, error) {
+	client := &http.Client{}
+	jsonBody := []byte(fmt.Sprintf(`{
+	"input_prefix": "%s",
+	"input_suffix": "%s",
+	"model": "starcoder2",
+	"temperature": 0,
+	"max_completion_tokens": 16,
+	"top_p": 1
+	}`, beforeContext, afterContext))
+
+	bodyReader := bytes.NewReader(jsonBody)
+	req, err := http.NewRequest("POST", g.providerUrl+"/infill", bodyReader)
+	if err != nil {
+		return FimResponse{}, err
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", g.apiToken))
+	req.Header.Add("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+
+	if err != nil {
+		return FimResponse{}, err
+	}
+
+	respScanner := bufio.NewScanner(resp.Body)
+	var respSb strings.Builder
+	for respScanner.Scan() {
+		buf := respScanner.Bytes()
+		respSb.Write(buf)
+	}
+
+	g.logger.Printf("Model: %s", respSb.String())
+
+	return parseFimResponse([]byte(respSb.String()))
+}
+
+func NewOAIApiProvider(apiToken string, providerUrl string, logger *log.Logger) OAIApiProvider {
+	return OAIApiProvider{
+		apiToken:    apiToken,
+		providerUrl: providerUrl,
+		logger:      logger,
+	}
 }
