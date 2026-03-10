@@ -73,9 +73,9 @@ func (g *OAIApiProvider) Request(model string, systemPrompt string, userPrompt s
 		}
 	],
 	"model": "%s",
-	"temperature": 0,
+	"temperature": 0.4,
 	"max_completion_tokens": 512,
-	"top_p": 1
+	"top_p": 0.85
 	}`, systemPrompt, userPrompt, model))
 	bodyReader := bytes.NewReader(jsonBody)
 	req, err := http.NewRequest("POST", g.providerUrl+"/v1/chat/completions", bodyReader)

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net"
@@ -22,8 +23,6 @@ import (
 
 const PORT string = "4400"
 const ADDR string = "0.0.0.0"
-
-const model string = "SmolLM2.q8.gguf"
 
 type ProductRecord struct {
 	Name         string
@@ -81,10 +80,11 @@ func getProductInfo(logger *log.Logger, db *sql.DB, query string) ([]ProductReco
 }
 
 func addRoutes(mux *http.ServeMux, httpLogger *log.Logger, db *sql.DB) {
+	groqApiKey := os.Getenv("GROQ_API_KEY")
 	dbLogger := log.New(os.Stderr, "DB: ", log.Ldate|log.Ltime|log.Lmsgprefix)
 	aiLogger := log.New(os.Stderr, "Model: ", log.Ldate|log.Ltime|log.Lmsgprefix)
-	llamaServer := glue.NewOAIApiProvider("no-key", "http://127.0.0.1:8080", aiLogger)
-	dbGnome := gnome.NewGnome(llamaServer)
+	groqServer := glue.NewOAIApiProvider(groqApiKey, glue.GroqUrl, aiLogger)
+	dbGnome := gnome.NewGnome(&groqServer)
 	tmpl := template.Must(template.ParseFiles("./views/index.html"))
 
 	fs := http.FileServer(http.Dir("./static"))
@@ -93,6 +93,7 @@ func addRoutes(mux *http.ServeMux, httpLogger *log.Logger, db *sql.DB) {
 		tmpl.ExecuteTemplate(w, "index", PageData{"Home", []ProductRecord{}})
 	})
 
+	// database agent route for main web app -- returns html product list
 	mux.HandleFunc("/filter", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", 405)
@@ -114,6 +115,59 @@ func addRoutes(mux *http.ServeMux, httpLogger *log.Logger, db *sql.DB) {
 		}
 
 		tmpl.ExecuteTemplate(w, "productList", productsList)
+	})
+
+	// database agent route that doesn't return html, for testing purposes
+	mux.HandleFunc("/testgnome", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		userQuery := r.FormValue("filter-request")
+		response, err := dbGnome.GenerateQuery(userQuery)
+		if err != nil {
+			httpLogger.Printf("dbGnome: %s", err)
+			http.Error(w, "AI error", 500)
+		}
+
+		productsList, err := getProductInfo(dbLogger, db, response)
+		if err != nil {
+			httpLogger.Printf("Database: %s", err)
+			http.Error(w, "Database error", 500)
+		}
+
+		productsJson, err := json.Marshal(productsList)
+		if err != nil {
+			httpLogger.Printf("Database: %s", err)
+			http.Error(w, "Database error", 500)
+		}
+		w.Write(productsJson)
+	})
+
+	// route that takes a SQL query and just runs it directly on the database
+	// this is obviously a super evil hack but this is a prototype for demonstration and testing purposes
+	// and there are a million other things that make it impractical for production
+	// this makes it easy to ensure that our raw SQL queries will return the same format as the /testgnome route
+	mux.HandleFunc("/testquery", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", 405)
+			return
+		}
+
+		userQuery := r.FormValue("query")
+		productsList, err := getProductInfo(dbLogger, db, userQuery)
+		if err != nil {
+			httpLogger.Printf("Database: %s", err)
+			http.Error(w, "Database error", 500)
+		}
+
+		productsJson, err := json.Marshal(productsList)
+		if err != nil {
+			httpLogger.Printf("Database: %s", err)
+			http.Error(w, "Database error", 500)
+		}
+		w.Write(productsJson)
 	})
 
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
