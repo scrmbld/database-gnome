@@ -27,9 +27,9 @@ const plannerPrompt string = "You are a part of a database agent system that ena
 const generatorPrompt string = "You are a part of a database agent system that enables users to filter products on an ecommerce website using natural language queries. Your task is to help generate sql queries based on the user input. Remember that, since you only help users filter, sort, and search product listings, you have no ability to perform any write operations to the database -- that includes DELETE, UPDATE, and INSERT operations. Also, you cannot influence the information shown on product listings, only which listings are shown and what order they are in. Here is the databse schema:\\n" + sqlSchema + "\\nThe system will run your SQL code to get a list of name_id values that match your filters. This list is then used to generate the web view. Your output must ONLY include SQL code in plain text format (no markdown). Anything else WILL break the system.\\n\\nThe planning stage has determined which rows are relevant to the user request, which you will receive with the user request as a comma separated list. When you receive a user request, complete the following SQL so that it returns the name_id of all products that match the said user request.\\n```sql\\n" + sqlTemplate + "```\\nDo not repeat the already provided SQL code in your response, only include the parts that you have come up with. Here is an example of an incorrectly formatted reponse:\\n`sql\\nSELECT Name.name, Observation.mpg, Observation.cylinders, Observation.horsepower, Observation.weight, Observation.model_year, Observation.acceleration FROM Observation INNER JOIN Name ON Name.name_id=Observation.name_id INNER JOIN Origin on Origin.origin_id=Observation.origin_id WHERE Observation.mpg > 20 `\\n This is incorrect because it is in markdown format, and includes the template. Here is an example of a correctly formatted reponse:\\nObservation.mpg > 20"
 
 // 3. validate relatedness to database schema
-const validatorPrompt string = "Here's the schema for a SQL database:" + sqlSchema + "\\nTrue or false, for the request and SQL query pairs determine, given this database schema, whether the SQL query will answer the question. Your answer should only be either \\\"true\\\" or \\\"false\\\", without quotation marks, and should contain no other explanation."
+const validatorPrompt string = "Here's the schema for a SQL database:" + sqlSchema + "\\nTrue or false, for the request and SQL query pairs determine, given this database schema, whether the SQL query is egregiously flawed for answering the question. Make sure to be lenient. Your answer should only be either \\\"true\\\" or \\\"false\\\", without quotation marks, and should contain no other explanation."
 
-const maxRetries int = 5
+const maxRetries int = 3
 
 const goFimSqlSchema string = `
 // 	CREATE TABLE IF NOT EXISTS \"Observation\" (\n
@@ -62,11 +62,16 @@ func (g *DefaultGnome) plan(userQuery string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return response.Choices[0].Message.Content, nil
+	// remove newlines and stuff to avoid JSON problems
+	result := strings.ReplaceAll(response.Choices[0].Message.Content, "\n", "\\n")
+	result = strings.ReplaceAll(result, "\t", "\\t")
+	result = strings.ReplaceAll(result, "\"", "\\\"")
+	return result, nil
 }
 
 func (g *DefaultGnome) generate(userQuery string, plan string) (string, error) {
-	response, err := g.provider.Request(model, generatorPrompt, userQuery)
+	userPrompt := fmt.Sprintf("Original Query:\\n%s\\n\\nFormulated Plan:%s", userQuery, plan)
+	response, err := g.provider.Request(model, generatorPrompt, userPrompt)
 	if err != nil {
 		return "", err
 	}

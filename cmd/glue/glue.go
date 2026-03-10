@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const LlamaUrl string = "https://127.0.0.1:8080"
+const LlamaUrl string = "http://127.0.0.1:8080"
 const GroqUrl string = "https://api.groq.com/openai"
 
 type Provider interface {
