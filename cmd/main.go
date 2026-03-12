@@ -17,7 +17,6 @@ import (
 	"github.com/scrmbld/database-gnome/cmd/gnome"
 	"github.com/scrmbld/database-gnome/cmd/logging"
 
-	"github.com/joho/godotenv"
 	_ "modernc.org/sqlite"
 )
 
@@ -218,7 +217,6 @@ func run(ctx context.Context, logger *log.Logger, db *sql.DB) error {
 }
 
 func main() {
-	godotenv.Load()
 	httpLogger := log.New(os.Stderr, "HTTP: ", log.Ldate|log.Ltime|log.Lmsgprefix)
 	db, err := sql.Open("sqlite", "./data/app.db")
 	if err != nil {
