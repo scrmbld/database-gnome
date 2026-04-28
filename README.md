@@ -6,7 +6,7 @@ The Database Gnome is a simple database agent that performs SQL queries based on
 
 1. clone or download the repository
 2. build the docker container: `docker build -t database-gnome`
-4. run `docker run database-gnome --env GROQ_API_KEY=<your API key> -p 4400:4400` -- the web server should now be running
+4. run `docker run --env GROQ_API_KEY=<your API key> -p 4400:4400 database-gnome` -- the web server should now be running
 5. navigate to `localhost:4400` in your browser to see the site
 
 At this point, you should be able to use the agent. The SQLite database comes included with the repo.
